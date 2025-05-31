@@ -1,7 +1,7 @@
 # Solo Leveling Plugin for RuneLite
 ![Solo Leveling Plugin Banner](https://example.com/banner.jpg)
 
-> **Rise, Shadow Monarch!** 🗡️⚔️  
+> **Arise, Shadow Monarch!** 🗡️⚔️  
 >
 
 An anime-themed Old School RuneScape plugin that tracks your skills and progress with a Solo Leveling aesthetic, featuring hunter ranks, power levels, and anime-style notifications.
