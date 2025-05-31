@@ -2,6 +2,8 @@ package com.sololeveling.task;
 
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Represents a task in the Solo Leveling plugin.
@@ -43,20 +45,39 @@ public class Task {
     /**
      * Whether the task is completed
      */
+    @Setter
     private boolean completed;
 
     /**
      * Whether the task is visible to the player (some tasks can be hidden until unlocked)
      */
+    @Setter
     private boolean visible;
 
     /**
-     * The experience points rewarded for completing the task
+     * Experience reward for completing the task
      */
-    private final int experienceReward;
+    private int experienceReward;
 
     /**
-     * Points awarded for completing the task
+     * Points reward for completing the task
      */
-    private final int pointsReward;
+    private int pointsReward;
+
+    /**
+     * ID of the related quest (if this is a quest task)
+     */
+    private String relatedQuestId;
+
+    /**
+     * Any additional data related to the task
+     */
+    private String additionalData;
+
+    /**
+     * Get the related quest ID if this is a quest task
+     */
+    public String getRelatedQuestId() {
+        return relatedQuestId;
+    }
 }

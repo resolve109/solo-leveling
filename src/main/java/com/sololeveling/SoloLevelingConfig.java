@@ -64,6 +64,30 @@ public interface SoloLevelingConfig extends Config
 		return 100;
 	}
 
+	@ConfigItem(
+		keyName = "showTaskCompletionMessages",
+		name = "Show Task Completion Messages",
+		description = "Display messages when tasks are completed",
+		section = messagesSection,
+		position = 5
+	)
+	default boolean showTaskCompletionMessages()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showTaskRewards",
+		name = "Show Task Rewards",
+		description = "Display reward messages when completing tasks",
+		section = messagesSection,
+		position = 6
+	)
+	default boolean showTaskRewards()
+	{
+		return true;
+	}
+
 	// === OVERLAY SETTINGS ===
 	@ConfigSection(
 		name = "Overlay",
@@ -235,7 +259,7 @@ public interface SoloLevelingConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "taskFilterSource",
+		keyName = "filterTasksBySource",
 		name = "Filter Tasks By Source",
 		description = "Only show tasks from selected sources",
 		section = tasksSection,
@@ -243,7 +267,7 @@ public interface SoloLevelingConfig extends Config
 	)
 	default boolean filterTasksBySource()
 	{
-		return false;
+		return true;
 	}
 
 	@ConfigItem(
@@ -283,13 +307,13 @@ public interface SoloLevelingConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "taskCompletionMessages",
-		name = "Task Completion Messages",
-		description = "Show messages when tasks are completed",
+		keyName = "showRandomTasks",
+		name = "Show Random Tasks",
+		description = "Display randomly generated tasks",
 		section = tasksSection,
 		position = 7
 	)
-	default boolean showTaskCompletionMessages()
+	default boolean showRandomTasks()
 	{
 		return true;
 	}

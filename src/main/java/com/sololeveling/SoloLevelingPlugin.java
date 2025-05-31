@@ -11,6 +11,7 @@ import com.sololeveling.tracking.PlayerTracker;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -23,6 +24,7 @@ import java.awt.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,8 +35,14 @@ import java.util.stream.Collectors;
 )
 public class SoloLevelingPlugin extends Plugin
 {
+	// Fallback logger in case Lombok's @Slf4j doesn't work
+	private static final Logger logger = Logger.getLogger(SoloLevelingPlugin.class.getName());
+
 	@Inject
 	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
 
 	@Inject
 	private SoloLevelingConfig config;
@@ -74,10 +82,16 @@ public class SoloLevelingPlugin extends Plugin
 		"🎯 Another step towards S-Rank! +%,d %s XP"
 	};
 
+	@Provides
+	SoloLevelingConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(SoloLevelingConfig.class);
+	}
+
 	@Override
 	protected void startUp() throws Exception
 	{
-		log.info("Solo Leveling plugin started! Welcome, Hunter!");
+		logger.info("Solo Leveling plugin started! Welcome, Hunter!");
 		overlayManager.add(overlay);
 		
 		// Initialize experience tracking
@@ -91,12 +105,63 @@ public class SoloLevelingPlugin extends Plugin
 
 		// Initialize task manager
 		taskManager.initialize();
+		
+		// Add debug logging for task initialization
+		log.info("DEBUG: Task initialization started");
+		
+		// Create some initial tasks to ensure there's something to display
+		createInitialTasks();
+		
+		// Add more debug info
+		log.info("DEBUG: TaskManager has {} total tasks", taskManager.getAllTasks().size());
+		log.info("DEBUG: TaskManager has {} visible tasks", taskManager.getVisibleTasks().size());
+		for (Task task : taskManager.getVisibleTasks()) {
+			log.info("DEBUG: Task - {}", task.getName());
+		}
+	}
+	
+	/**
+	 * Create initial tasks to ensure there's something visible in the overlay
+	 */
+	private void createInitialTasks() {
+		// Create and add some initial tasks
+		Task initialTask = Task.builder()
+			.id("initial_task_1")
+			.name("Begin your journey")
+			.description("Start leveling your skills and becoming stronger")
+			.difficulty(TaskDifficulty.EASY)
+			.category(TaskCategory.SKILLING)
+			.source(TaskSource.CUSTOM)
+			.experienceReward(1000)
+			.pointsReward(50)
+			.completed(false)
+			.visible(true)
+			.build();
+		
+		Task combatTask = Task.builder()
+			.id("initial_combat_1")
+			.name("Defeat a goblin")
+			.description("Start your combat journey by defeating a goblin")
+			.difficulty(TaskDifficulty.EASY)
+			.category(TaskCategory.COMBAT)
+			.source(TaskSource.CUSTOM)
+			.experienceReward(500)
+			.pointsReward(25)
+			.completed(false)
+			.visible(true)
+			.build();
+			
+		taskManager.addTask(initialTask);
+		taskManager.addTask(combatTask);
+		
+		// Generate a random challenge too
+		generateRandomChallenge();
 	}
 
 	@Override
 	protected void shutDown() throws Exception
 	{
-		log.info("Solo Leveling plugin stopped! Until next time, Hunter...");
+		logger.info("Solo Leveling plugin stopped! Until next time, Hunter...");
 		overlayManager.remove(overlay);
 		previousExperience.clear();
 		previousLevels.clear();
@@ -172,16 +237,16 @@ public class SoloLevelingPlugin extends Plugin
 		playerTracker.recordGameTick();
 
 		// Check for quest completions
-		checkQuestCompletions();
+		clientThread.invoke(this::checkQuestCompletions);
 
 		// Generate random challenges occasionally
 		if (playerTracker.getGameTicks() % 600 == 0) // Every ~6 minutes (600 ticks)
 		{
-			generateRandomChallenge();
+			clientThread.invoke(this::generateRandomChallenge);
 		}
 
 		// Check for task completions
-		checkTaskCompletions();
+		clientThread.invoke(this::checkTaskCompletions);
 	}
 
 	@Subscribe
@@ -189,15 +254,15 @@ public class SoloLevelingPlugin extends Plugin
 	{
 		// Update quest status in player tracker when varbits change
 		// Quest states are stored in varbits, so this event will capture quest changes
-		playerTracker.updateQuestStatus(client);
+		clientThread.invoke(() -> playerTracker.updateQuestStatus(client));
 
 		// Check if this completes any tasks
-		checkQuestTaskCompletions();
+		clientThread.invoke(this::checkQuestTaskCompletions);
 
 		// Check if player has quest cape
 		if (playerTracker.hasQuestCape() && Math.random() < 0.5) // 50% chance
 		{
-			generateQuestChallenge();
+			clientThread.invoke(this::generateQuestChallenge);
 		}
 	}
 
@@ -282,42 +347,58 @@ public class SoloLevelingPlugin extends Plugin
 	 */
 	public List<Task> getTasks()
 	{
+		// Debug the task retrieval
+		log.debug("DEBUG: Getting tasks for display. TaskManager initialized: {}", taskManager.isInitialized());
+		log.debug("DEBUG: Total tasks available: {}", taskManager.getAllTasks().size());
+		log.debug("DEBUG: Visible tasks available: {}", taskManager.getVisibleTasks().size());
+		
 		List<Task> visibleTasks = taskManager.getVisibleTasks();
+		
+		// Debug the visible tasks
+		for (Task task : visibleTasks) {
+			log.debug("DEBUG: Visible task: {} ({})", task.getName(), task.getSource());
+		}
 
 		// Apply filtering based on configuration
-		if (config.filterTasksBySource())
-		{
-			visibleTasks = visibleTasks.stream()
-				.filter(task -> {
-					if (!config.showLeagueTasks() &&
-						(task.getSource() == TaskSource.LEAGUE_RAGING_ECHOES ||
-						 task.getSource() == TaskSource.LEAGUE_TRAILBLAZER))
-					{
-						return false;
-					}
-					if (!config.showQuestTasks() && task.getSource() == TaskSource.QUEST)
-					{
-						return false;
-					}
-					if (!config.showCustomTasks() && task.getSource() == TaskSource.CUSTOM)
-					{
-						return false;
-					}
+		List<Task> filteredTasks = visibleTasks.stream()
+			.filter(task -> {
+				// First check if we should filter by source
+				if (!config.filterTasksBySource()) {
 					return true;
-				})
-				.limit(config.maxTasksShown())
-				.collect(Collectors.toList());
-		}
-		else
-		{
-			// Just limit the number of tasks shown
-			if (visibleTasks.size() > config.maxTasksShown())
-			{
-				visibleTasks = visibleTasks.subList(0, config.maxTasksShown());
-			}
+				}
+				
+				// Then apply source filters
+				if (!config.showLeagueTasks() &&
+					(task.getSource() == TaskSource.LEAGUE_RAGING_ECHOES ||
+					task.getSource() == TaskSource.LEAGUE_TRAILBLAZER))
+				{
+					return false;
+				}
+				if (!config.showQuestTasks() && task.getSource() == TaskSource.QUEST)
+				{
+					return false;
+				}
+				if (!config.showCustomTasks() && task.getSource() == TaskSource.CUSTOM)
+				{
+					return false;
+				}
+				if (!config.showRandomTasks() && 
+					(task.getId().startsWith("random_") || task.getId().startsWith("personalized_")))
+				{
+					return false;
+				}
+				return true;
+			})
+			.limit(config.maxTasksShown())
+			.collect(Collectors.toList());
+		
+		// Debug the filtered tasks
+		log.debug("DEBUG: Filtered tasks count: {}", filteredTasks.size());
+		for (Task task : filteredTasks) {
+			log.debug("DEBUG: Filtered task: {}", task.getName());
 		}
 
-		return visibleTasks;
+		return filteredTasks;
 	}
 
 	/**
@@ -335,11 +416,17 @@ public class SoloLevelingPlugin extends Plugin
 			Task task = taskManager.getTaskById(taskId);
 			if (task != null)
 			{
-				// Show completion message
-				String message = String.format("⚔️ Task completed: %s! You gained %d points and %d XP!",
-					task.getName(), task.getPointsReward(), task.getExperienceReward());
+				String message = String.format("🎯 Task completed: %s", task.getName());
 				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-					ColorUtil.wrapWithColorTag(message, config.secondaryColor()), null);
+					ColorUtil.wrapWithColorTag(message, Color.GREEN), null);
+
+				if (config.showTaskRewards() && (task.getExperienceReward() > 0 || task.getPointsReward() > 0))
+				{
+					String rewardMessage = String.format("💰 Rewards: %,d XP, %d points",
+						task.getExperienceReward(), task.getPointsReward());
+					client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+						ColorUtil.wrapWithColorTag(rewardMessage, Color.YELLOW), null);
+				}
 			}
 		}
 
@@ -347,239 +434,199 @@ public class SoloLevelingPlugin extends Plugin
 	}
 
 	/**
-	 * Get the player's stats from the Hiscores API
-	 *
-	 * @return a map of skills to their hiscore data, or null if failed
+	 * Check for quest completions (placeholder implementation)
 	 */
-	public Map<Skill, OsrsApiManager.PlayerSkillData> getPlayerHiscores()
-	{
-		if (client.getLocalPlayer() == null)
-		{
-			return null;
-		}
-
-		String playerName = client.getLocalPlayer().getName();
-		return apiManager.getPlayerHiscores(playerName);
+	private void checkQuestCompletions() {
+		// We'll use the PlayerTracker's method instead of reimplementing
+		playerTracker.checkQuestCompletions(client);
+		
+		// Check if any tasks need to be updated based on quest status
+		checkQuestTaskCompletions();
 	}
 
 	/**
-	 * Look up information about a game entity on the OSRS Wiki
-	 *
-	 * @param entityName the name of the entity to look up
-	 * @return information about the entity
+	 * Generate a random challenge (placeholder implementation)
 	 */
-	public OsrsApiManager.WikiEntityInfo lookupWikiInfo(String entityName)
-	{
-		return apiManager.getWikiEntityInfo(entityName);
-	}
-
-	/**
-	 * Get a direct wiki URL for an entity
-	 *
-	 * @param entityName the name of the entity
-	 * @return the wiki URL
-	 */
-	public String getWikiUrl(String entityName)
-	{
-		return apiManager.getWikiUrl(entityName);
-	}
-
-	/**
-	 * Generate wiki-based tasks for the player
-	 */
-	public void generateWikiBasedTasks()
-	{
-		if (client.getGameState() != GameState.LOGGED_IN)
-		{
+	private void generateRandomChallenge() {
+		if (!config.showRandomTasks()) {
 			return;
 		}
-
-		// Choose a skill to focus on
-		Skill[] skills = {Skill.WOODCUTTING, Skill.FISHING, Skill.MINING, Skill.FARMING,
-						  Skill.SLAYER, Skill.HUNTER};
-
-		Skill focusSkill = skills[(int) (Math.random() * skills.length)];
-		int playerLevel = client.getRealSkillLevel(focusSkill);
-
-		// Generate a wiki-based task for appropriate level
-		String entityName = getSkillEntityForLevel(focusSkill, playerLevel);
-		if (entityName == null)
-		{
-			return;
-		}
-
-		// Look up wiki information
-		OsrsApiManager.WikiEntityInfo info = lookupWikiInfo(entityName);
-
-		// Create the task
-		String taskAction = getSkillingAction(focusSkill);
-		String taskName = String.format("Arise: %s %s", taskAction, entityName);
-
-		String description;
-		if (info.isFound())
-		{
-			// Use a shortened wiki description
-			String shortDesc = info.getDescription();
-			if (shortDesc.length() > 100)
-			{
-				shortDesc = shortDesc.substring(0, 100) + "...";
-			}
-			description = String.format("%s %s. Wiki: %s", taskAction, entityName, shortDesc);
-		}
-		else
-		{
-			description = String.format("%s %s to grow stronger!", taskAction, entityName);
-		}
-
-		Task newTask = Task.builder()
-			.id("wiki_" + System.currentTimeMillis())
-			.name(taskName)
-			.description(description)
-			.difficulty(getTaskDifficultyForLevel(playerLevel))
-			.category(TaskCategory.SKILLING)
-			.source(TaskSource.CUSTOM)
-			.experienceReward(playerLevel * 100)
-			.pointsReward(playerLevel / 2)
-			.completed(false)
-			.visible(true)
-			.build();
-
-		taskManager.addTask(newTask);
-
-		// Notify player
-		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-			ColorUtil.wrapWithColorTag("🗡️ A new challenge arises, Hunter! " + taskName, Color.CYAN), null);
-	}
-
-	/**
-	 * Compare the player's in-game stats with their hiscores data
-	 * and generate appropriate tasks
-	 */
-	public void compareWithHiscoresAndGenerateTasks()
-	{
-		if (client.getGameState() != GameState.LOGGED_IN)
-		{
-			return;
-		}
-
-		Map<Skill, OsrsApiManager.PlayerSkillData> hiscores = getPlayerHiscores();
-		if (hiscores == null || hiscores.isEmpty())
-		{
-			return;
-		}
-
-		// Find skills where the player's in-game level is lower than hiscores
-		// (could happen if they've been training on another account)
-		for (Map.Entry<Skill, OsrsApiManager.PlayerSkillData> entry : hiscores.entrySet())
-		{
-			Skill skill = entry.getKey();
-			int hiscoreLevel = entry.getValue().getLevel();
-			int currentLevel = client.getRealSkillLevel(skill);
-
-			if (currentLevel < hiscoreLevel)
-			{
-				// Create a task to reach their previous best
-				String taskName = String.format("Reclaim your strength: Reach Level %d in %s",
-					hiscoreLevel, skill.getName());
-
-				String description = String.format(
-					"The Shadow Monarch's power must be reclaimed! Reach level %d in %s to regain your former strength.",
-					hiscoreLevel, skill.getName());
-
-				Task newTask = Task.builder()
-					.id("hiscore_" + skill.getName().toLowerCase() + "_" + System.currentTimeMillis())
-					.name(taskName)
-					.description(description)
-					.difficulty(getTaskDifficultyForLevel(hiscoreLevel))
-					.category(TaskCategory.SKILLING)
-					.source(TaskSource.CUSTOM)
-					.experienceReward(hiscoreLevel * 150)
-					.pointsReward(hiscoreLevel)
-					.completed(false)
-					.visible(true)
-					.build();
-
-				taskManager.addTask(newTask);
-
-				// Only create one such task at a time
-				break;
+		
+		// Create a random task
+		TaskDifficulty difficulty = getRandomDifficulty();
+		TaskCategory category = getRandomCategory();
+		
+		log.debug("DEBUG: Generating random task with difficulty {} and category {}", difficulty, category);
+		
+		Task randomTask = taskManager.createRandomTask(difficulty, category);
+		if (randomTask != null) {
+			taskManager.addTask(randomTask);
+			
+			if (config.showTaskCompletionMessages()) {
+				String message = "🌟 New task generated: " + randomTask.getName();
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+					ColorUtil.wrapWithColorTag(message, Color.CYAN), null);
 			}
 		}
 	}
 
 	/**
-	 * Get an appropriate entity for a skill at the given level
+	 * Check for task completions (placeholder implementation)
 	 */
-	private String getSkillEntityForLevel(Skill skill, int level)
-	{
-		// This could be expanded with more entities for each skill and level range
-		if (skill == Skill.WOODCUTTING)
-		{
-			if (level < 15) return "Regular trees";
-			else if (level < 30) return "Oak trees";
-			else if (level < 45) return "Willow trees";
-			else if (level < 60) return "Maple trees";
-			else if (level < 75) return "Yew trees";
-			else return "Magic trees";
-		}
-		else if (skill == Skill.FISHING)
-		{
-			if (level < 20) return "Shrimp";
-			else if (level < 40) return "Trout";
-			else if (level < 60) return "Lobster";
-			else if (level < 80) return "Shark";
-			else return "Anglerfish";
-		}
-		else if (skill == Skill.MINING)
-		{
-			if (level < 15) return "Copper ore";
-			else if (level < 30) return "Iron ore";
-			else if (level < 45) return "Coal";
-			else if (level < 70) return "Mithril ore";
-			else if (level < 85) return "Adamantite ore";
-			else return "Runite ore";
-		}
-		else if (skill == Skill.FARMING)
-		{
-			if (level < 20) return "Potato seeds";
-			else if (level < 40) return "Strawberry seeds";
-			else if (level < 60) return "Snapdragon seeds";
-			else if (level < 80) return "Torstol seeds";
-			else return "Magic saplings";
-		}
-		else if (skill == Skill.SLAYER)
-		{
-			if (level < 20) return "Crawling Hands";
-			else if (level < 40) return "Pyrefiends";
-			else if (level < 60) return "Aberrant Spectres";
-			else if (level < 80) return "Gargoyles";
-			else return "Abyssal demons";
-		}
-		else if (skill == Skill.HUNTER)
-		{
-			if (level < 20) return "Crimson Swifts";
-			else if (level < 40) return "Tropical Wagtails";
-			else if (level < 60) return "Red Chinchompas";
-			else if (level < 80) return "Black Chinchompas";
-			else return "Herbiboar";
-		}
-
-		return null;
+	private void checkTaskCompletions() {
+		// This would contain logic to check if tasks have been completed automatically
+		// For now we're just logging for debugging
+		log.debug("DEBUG: Checking for task completions");
 	}
 
 	/**
-	 * Get the player tracker
+	 * Check for quest task completions (placeholder implementation)
 	 */
-	public PlayerTracker getPlayerTracker()
-	{
-		return playerTracker;
+	private void checkQuestTaskCompletions() {
+		if (playerTracker == null || taskManager == null) {
+			return;
+		}
+		
+		log.debug("DEBUG: Checking for quest task completions");
+		
+		// Get incomplete quest tasks
+		List<Task> questTasks = taskManager.getIncompleteTasksBySource(TaskSource.QUEST);
+		log.debug("DEBUG: Found {} incomplete quest tasks", questTasks.size());
+		
+		// Check each task to see if its related quest is completed
+		for (Task task : questTasks) {
+			if (task.getRelatedQuestId() != null &&
+				playerTracker.isQuestCompleted(task.getRelatedQuestId())) {
+				log.debug("DEBUG: Quest task completed: {}", task.getName());
+				completeTask(task.getId());
+			}
+		}
 	}
 
 	/**
-	 * Get the API manager
+	 * Generate a quest challenge (placeholder implementation)
 	 */
-	public OsrsApiManager getApiManager()
-	{
-		return apiManager;
+	private void generateQuestChallenge() {
+		log.debug("DEBUG: Generating quest challenge");
+		Task questTask = taskManager.createQuestTask();
+		if (questTask != null) {
+			taskManager.addTask(questTask);
+			
+			if (config.showTaskCompletionMessages()) {
+				String message = "📜 New quest task: " + questTask.getName();
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+					ColorUtil.wrapWithColorTag(message, Color.CYAN), null);
+			}
+		}
+	}
+
+	/**
+	 * Get a random difficulty level
+	 */
+	private TaskDifficulty getRandomDifficulty() {
+		double rand = Math.random();
+		if (rand < 0.4) {
+			return TaskDifficulty.EASY;
+		} else if (rand < 0.7) {
+			return TaskDifficulty.MEDIUM;
+		} else if (rand < 0.9) {
+			return TaskDifficulty.HARD;
+		} else if (rand < 0.95) {
+			return TaskDifficulty.ELITE;
+		} else {
+			return TaskDifficulty.MASTER;
+		}
+	}
+
+	/**
+	 * Get a random category
+	 */
+	private TaskCategory getRandomCategory() {
+		TaskCategory[] categories = TaskCategory.values();
+		return categories[(int)(Math.random() * categories.length)];
+	}
+
+	/**
+	 * Get appropriate difficulty and action for skill levels
+	 */
+	private TaskDifficulty getTaskDifficultyForLevel(int level) {
+		if (level < 30) return TaskDifficulty.EASY;
+		if (level < 50) return TaskDifficulty.MEDIUM;
+		if (level < 70) return TaskDifficulty.HARD;
+		if (level < 90) return TaskDifficulty.ELITE;
+		return TaskDifficulty.MASTER;
+	}
+
+	/**
+	 * Get appropriate skilling action for a skill
+	 */
+	private String getSkillingAction(Skill skill) {
+		switch (skill) {
+			case MINING: return "Mine";
+			case FISHING: return "Catch";
+			case WOODCUTTING: return "Cut";
+			case COOKING: return "Cook";
+			case SMITHING: return "Smith";
+			default: return "Train";
+		}
+	}
+
+	/**
+	 * Get appropriate entity for skill level
+	 */
+	private String getSkillEntityForLevel(Skill skill, int level) {
+		switch (skill) {
+			case WOODCUTTING:
+				if (level < 30) return "oak logs";
+				if (level < 45) return "willow logs";
+				if (level < 60) return "maple logs";
+				return "yew logs";
+			case FISHING:
+				if (level < 40) return "trout";
+				if (level < 60) return "lobsters";
+				return "sharks";
+			default:
+				return "resources";
+		}
+	}
+
+	/**
+	 * Get a random monster for task generation
+	 */
+	private String getRandomMonster() {
+		String[] monsters = {
+			"Goblin", "Hill Giant", "Moss Giant", "Skeleton", "Zombie", "Ghost",
+			"Bandit", "Farmer", "Guard", "Lesser Demon", "Greater Demon", "Black Demon",
+			"Green Dragon", "Blue Dragon", "Red Dragon", "Black Dragon", "Iron Dragon", "Steel Dragon",
+			"Abyssal Demon", "Dark Beast", "Cave Kraken", "Gargoyle", "Nechryael", "Spiritual Mage"
+		};
+		return monsters[(int)(Math.random() * monsters.length)];
+	}
+
+	/**
+	 * Get a random item for task generation
+	 */
+	private String getRandomItem() {
+		String[] items = {
+			"Bones", "Big Bones", "Feathers", "Runes", "Herbs", "Gems",
+			"Coal", "Iron Ore", "Gold Ore", "Mithril Ore", "Adamantite Ore", "Runite Ore",
+			"Logs", "Oak Logs", "Willow Logs", "Maple Logs", "Yew Logs", "Magic Logs",
+			"Raw Shrimp", "Raw Trout", "Raw Salmon", "Raw Lobster", "Raw Swordfish", "Raw Shark"
+		};
+		return items[(int)(Math.random() * items.length)];
+	}
+
+	/**
+	 * Get a random skill for task generation
+	 */
+	private String getRandomSkill() {
+		Skill[] skills = {
+			Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE, Skill.RANGED, Skill.PRAYER, Skill.MAGIC,
+			Skill.RUNECRAFT, Skill.CONSTRUCTION, Skill.HITPOINTS, Skill.AGILITY, Skill.HERBLORE,
+			Skill.THIEVING, Skill.CRAFTING, Skill.FLETCHING, Skill.SLAYER, Skill.HUNTER,
+			Skill.MINING, Skill.SMITHING, Skill.FISHING, Skill.COOKING, Skill.FIREMAKING,
+			Skill.WOODCUTTING, Skill.FARMING
+		};
+		return skills[(int)(Math.random() * skills.length)].getName();
 	}
 }

@@ -50,20 +50,62 @@ public class PlayerTracker {
             }
         }
 
-        // Track quest completion status
+        // Initialize quest status
         updateQuestStatus(client);
     }
 
     /**
-     * Update quest completion status
+     * Update quest completion status from client
      */
     public void updateQuestStatus(Client client) {
-        questPoints = client.getVarpValue(Varbits.QUEST_POINTS);
-
-        // Track all quests (simplified version)
-        for (Quest quest : Quest.values()) {
-            completedQuests.put(quest.getName(), quest.getState(client) == 2);
+        if (client.getGameState().getState() < 30) {
+            // Not logged in
+            return;
         }
+
+        // Quest points is stored in varbit 101
+        questPoints = client.getVarbitValue(101);
+
+        // Track all quests
+        for (Quest quest : Quest.values()) {
+            // Compare directly with QuestState.FINISHED
+            boolean isCompleted = quest.getState(client) == net.runelite.api.QuestState.FINISHED;
+            completedQuests.put(quest.getName(), isCompleted);
+        }
+    }
+
+    /**
+     * Check for quest completions since last update
+     */
+    public void checkQuestCompletions(Client client) {
+        // Keep track of previous quest states
+        Map<String, Boolean> previousStates = new HashMap<>(completedQuests);
+
+        // Update current quest states
+        updateQuestStatus(client);
+
+        // In a real implementation, this would compare previous and current states
+        // to detect newly completed quests
+    }
+
+    /**
+     * Check if a specific quest is completed
+     */
+    public boolean isQuestCompleted(String questId) {
+        return completedQuests.getOrDefault(questId, false);
+    }
+
+    /**
+     * Check if the player has a quest cape
+     */
+    public boolean hasQuestCape() {
+        // Check if all quests are completed
+        for (Boolean completed : completedQuests.values()) {
+            if (!completed) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -86,13 +128,20 @@ public class PlayerTracker {
     }
 
     /**
-     * Update session time
+     * Update session time tracking
      */
     public void updateSessionTime() {
-        long currentSessionTime = System.currentTimeMillis() - sessionStartTime;
-        totalPlayTimeMillis += currentSessionTime;
-        // Reset for next session
-        sessionStartTime = System.currentTimeMillis();
+        long currentTime = System.currentTimeMillis();
+        long sessionTime = currentTime - sessionStartTime;
+        totalPlayTimeMillis += sessionTime;
+        sessionStartTime = currentTime; // Reset for next session
+    }
+
+    /**
+     * Get the total number of game ticks recorded
+     */
+    public int getGameTicks() {
+        return gameTicks;
     }
 
     /**
@@ -124,13 +173,6 @@ public class PlayerTracker {
     }
 
     /**
-     * Check if a quest is completed
-     */
-    public boolean isQuestCompleted(String questName) {
-        return completedQuests.getOrDefault(questName, false);
-    }
-
-    /**
      * Get number of completed quests
      */
     public int getCompletedQuestCount() {
@@ -141,19 +183,6 @@ public class PlayerTracker {
             }
         }
         return count;
-    }
-
-    /**
-     * Check if all quests are completed (quest cape)
-     */
-    public boolean hasQuestCape() {
-        // Check if all quests are completed
-        for (Boolean completed : completedQuests.values()) {
-            if (!completed) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
