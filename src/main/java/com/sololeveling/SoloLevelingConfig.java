@@ -201,11 +201,104 @@ public interface SoloLevelingConfig extends Config
 		return Color.WHITE;
 	}
 
+	// === TASK SETTINGS ===
+	@ConfigSection(
+		name = "Tasks",
+		description = "Configure task display and tracking",
+		position = 4
+	)
+	String tasksSection = "tasks";
+
+	@ConfigItem(
+		keyName = "showTasks",
+		name = "Show Tasks",
+		description = "Display tasks in the overlay",
+		section = tasksSection,
+		position = 1
+	)
+	default boolean showTasks()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "maxTasksShown",
+		name = "Max Tasks Shown",
+		description = "Maximum number of tasks to show in the overlay",
+		section = tasksSection,
+		position = 2
+	)
+	@Range(min = 1, max = 10)
+	default int maxTasksShown()
+	{
+		return 5;
+	}
+
+	@ConfigItem(
+		keyName = "taskFilterSource",
+		name = "Filter Tasks By Source",
+		description = "Only show tasks from selected sources",
+		section = tasksSection,
+		position = 3
+	)
+	default boolean filterTasksBySource()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "showLeagueTasks",
+		name = "Show League Tasks",
+		description = "Display tasks from OSRS leagues",
+		section = tasksSection,
+		position = 4
+	)
+	default boolean showLeagueTasks()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showQuestTasks",
+		name = "Show Quest Tasks",
+		description = "Display tasks from OSRS quests",
+		section = tasksSection,
+		position = 5
+	)
+	default boolean showQuestTasks()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showCustomTasks",
+		name = "Show Custom Tasks",
+		description = "Display custom tasks",
+		section = tasksSection,
+		position = 6
+	)
+	default boolean showCustomTasks()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "taskCompletionMessages",
+		name = "Task Completion Messages",
+		description = "Show messages when tasks are completed",
+		section = tasksSection,
+		position = 7
+	)
+	default boolean showTaskCompletionMessages()
+	{
+		return true;
+	}
+
 	// === ADVANCED SETTINGS ===
 	@ConfigSection(
 		name = "Advanced",
 		description = "Advanced Solo Leveling plugin settings",
-		position = 4
+		position = 5
 	)
 	String advancedSection = "advanced";
 

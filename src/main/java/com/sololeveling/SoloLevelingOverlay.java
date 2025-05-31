@@ -1,5 +1,9 @@
 package com.sololeveling;
 
+import com.sololeveling.task.Task;
+import com.sololeveling.task.TaskCategory;
+import com.sololeveling.task.TaskDifficulty;
+import com.sololeveling.task.TaskSource;
 import net.runelite.api.Client;
 import net.runelite.api.Skill;
 import net.runelite.client.ui.overlay.Overlay;
@@ -12,6 +16,7 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 import javax.inject.Inject;
 import java.awt.*;
 import java.text.NumberFormat;
+import java.util.List;
 import java.util.Map;
 
 public class SoloLevelingOverlay extends Overlay
@@ -84,6 +89,12 @@ public class SoloLevelingOverlay extends Overlay
 			addRecentXpGains();
 		}
 
+		// Tasks
+		if (config.showTasks())
+		{
+			addTasks();
+		}
+
 		// Hunter Status
 		addHunterStatus();
 
@@ -146,6 +157,37 @@ public class SoloLevelingOverlay extends Overlay
 					.rightColor(Color.GRAY)
 					.build());
 			}
+		}
+	}
+
+	private void addTasks()
+	{
+		List<Task> tasks = plugin.getTasks();
+		if (tasks.isEmpty())
+		{
+			return;
+		}
+
+		// Add separator
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left("━━━━━━━━━━━━━━━━")
+			.leftColor(config.primaryColor())
+			.build());
+
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left("📋 Tasks:")
+			.leftColor(config.textColor())
+			.build());
+
+		for (Task task : tasks)
+		{
+			String taskText = task.getName() + " (" + task.getCategory() + ")";
+			panelComponent.getChildren().add(LineComponent.builder()
+				.left("  " + taskText)
+				.leftColor(config.textColor())
+				.right(task.getDifficulty().toString())
+				.rightColor(config.secondaryColor())
+				.build());
 		}
 	}
 
